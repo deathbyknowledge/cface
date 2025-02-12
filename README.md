@@ -23,5 +23,5 @@ source ./deps/emsdk/emsdk_env.sh
 ## Compile code using dlib.
 `src/main.cpp` imports and uses dlib. To compile it to WASM do
 ```
-emcc -std=c++17 -O3 -DDLIB_NO_GUI_SUPPORT -include ./src/force_char_traits_unsigned_int.hpp -I ./deps/dlib src/main.cpp ./deps/dlib/dlib/all/source.cpp -lstdc++ -s ALLOW_MEMORY_GROWTH=1 -s USE_ZLIB=1 -s ASSERTIONS=1 --bind -O3 -g  -o dlib-wasm-test
+em++ -std=c++17 -O3 -DDLIB_NO_GUI_SUPPORT -include ./src/force_char_traits_unsigned_int.hpp -I ./deps/dlib ./deps/dlib/dlib/all/source.cpp -lstdc++ -s MODULARIZE=1 -s EXPORT_ES6=1 -s ALLOW_MEMORY_GROWTH=1 -s USE_ZLIB=1 -s ASSERTIONS=1 --bind -O3 -g  -o dist/build/facerec.js src/main.cpp
 ```

@@ -47,12 +47,16 @@ public:
     // deserialize("./models/taguchi_face_recognition_resnet_model_v1.dat") >> net;
   }
 
+  void someMethod()
+  {
+    cout << "someMethod called\n";
+  }
+
 private:
   anet_type net;
 };
 
-
-extern "C" int main(int argc, char **argv)
+int main(int argc, char **argv)
 {
   cout << "Hello from C++ main()\n";
 
@@ -61,12 +65,14 @@ extern "C" int main(int argc, char **argv)
   return 0;
 }
 
-void initalize()
+void initialize()
 {
   FaceRecognizer facerec;
 }
 
 EMSCRIPTEN_BINDINGS(my_module)
 {
-  emscripten::function("initalize", &initalize);
+  emscripten::class_<FaceRecognizer>("FaceRecognizer")
+      .constructor<>()
+      .function("someMethod", &FaceRecognizer::someMethod);
 }
