@@ -1,6 +1,0 @@
-[submodule "deps/dlib"]
-	path = deps/dlib
-	url = https://github.com/davisking/dlib
-[submodule "deps/emsdk"]
-	path = deps/emsdk
-	url = https://github.com/emscripten-core/emsdk

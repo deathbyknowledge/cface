@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Face Capture 160x160 Example</title>
+    <!-- face-api.js (UMD/minified build) -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
+    <style>
+      body {
+        font-family: monospace;
+        margin: 15px;
+      }
+      video,
+      canvas,
+      img {
+        display: block;
+        margin: 1rem auto;
+      }
+      #croppedImage {
+        border: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <center>
+    <h1>Capture and Crop a Face (160x160)</h1>
+
+    <video id="video" width="640" height="480" autoplay muted></video>
+    <button id="captureBtn">Capture</button>
+
+    <p><strong>Cropped Image Preview (160×160):</strong></p>
+    <img id="croppedImage" width="160" height="160" alt="Cropped Face" />
+
+    <script>
+      // 1. Load face detection models
+      async function loadModels() {
+        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        console.log("Models loaded");
+      }
+
+      // 2. Start the video stream
+      async function startVideo() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+          });
+          const videoElement = document.getElementById("video");
+          videoElement.srcObject = stream;
+        } catch (err) {
+          console.error("Error accessing webcam: ", err);
+          alert("Could not access webcam.");
+        }
+      }
+
+      // 3. Capture the frame and detect a face
+      async function captureAndDetectFace() {
+        const videoElement = document.getElementById("video");
+
+        // Create a temporary canvas to get the full video frame
+        const fullCanvas = document.createElement("canvas");
+        fullCanvas.width = videoElement.videoWidth;
+        fullCanvas.height = videoElement.videoHeight;
+
+        const fullCtx = fullCanvas.getContext("2d");
+        fullCtx.drawImage(
+          videoElement,
+          0,
+          0,
+          fullCanvas.width,
+          fullCanvas.height
+        );
+
+        // Detect a single face on that canvas
+        const detection = await faceapi.detectSingleFace(
+          fullCanvas,
+          new faceapi.TinyFaceDetectorOptions()
+        );
+
+        if (!detection) {
+          alert("No face detected. Please try again.");
+          return;
+        }
+
+        // 4. Crop and resize the face to 160×160
+        const { x, y, width, height } = detection.box;
+
+        // Create a new canvas for the cropped/resized face
+        const faceCanvas = document.createElement("canvas");
+        const targetSize = 160; // Width & height of the final cropped image
+        faceCanvas.width = targetSize;
+        faceCanvas.height = targetSize;
+
+        // Draw the face region from the fullCanvas onto the faceCanvas (scaled to 160x160)
+        faceCanvas.getContext("2d").drawImage(
+          fullCanvas,
+          x, // source x
+          y, // source y
+          width, // source width
+          height, // source height
+          0, // destination x
+          0, // destination y
+          targetSize, // destination width
+          targetSize // destination height
+        );
+
+        // 5. Display the 160×160 cropped face in the <img> element
+        const dataUrl = faceCanvas.toDataURL("image/jpeg");
+        document.getElementById("croppedImage").src = dataUrl;
+
+        // 6. Send the image bytes (two options):
+        sendCroppedFace(dataUrl);
+      }
+
+      // Option A: Send as Base64-encoded string
+      //   (Simple to implement, but bulkier payload)
+      async function sendCroppedFaceAsDataURL(dataUrl) {
+        try {
+          const response = await fetch("/upload-base64", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imageData: dataUrl }),
+          });
+          const result = await response.text();
+          console.log("Server response:", result);
+        } catch (err) {
+          console.error("Error uploading base64 data:", err);
+        }
+      }
+
+      // Option B: Convert data URL to a Blob and send as form data
+      async function sendCroppedFaceAsBlob(dataUrl) {
+        // Convert a base64 string to a binary Blob
+        function dataURLtoBlob(url) {
+          const arr = url.split(",");
+          const mime = arr[0].match(/:(.*?);/)[1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          return new Blob([u8arr], { type: mime });
+        }
+
+        const blob = dataURLtoBlob(dataUrl);
+
+        // Use FormData to send as a file
+        const formData = new FormData();
+        formData.append("file", blob, "cropped.jpg");
+
+        try {
+          const response = await fetch("/compute", {
+            method: "POST",
+            body: blob,
+          });
+          const result = await response.json();
+          console.log("Server response:", result);
+        } catch (err) {
+          console.error("Error uploading blob:", err);
+        }
+      }
+
+      // Decide which sending approach to use
+      function sendCroppedFace(dataUrl) {
+        // Example: send as Blob by default
+        sendCroppedFaceAsBlob(dataUrl);
+
+        // Or you can do:
+        // sendCroppedFaceAsDataURL(dataUrl);
+      }
+
+      // Main: Load models, start video, attach button listener
+      window.addEventListener("load", async () => {
+        await loadModels();
+        await startVideo();
+
+        document
+          .getElementById("captureBtn")
+          .addEventListener("click", captureAndDetectFace);
+      });
+    </script>
+    </center>
+  </body>
+</html>
