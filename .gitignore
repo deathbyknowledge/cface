@@ -1,8 +1,10 @@
 dist/build/
-**.swp
+*.swp
 **/target
-**.bin
-**.onnx
-**.jpg
-**.jpeg
-**.DS_Store
+*.bin
+*.onnx
+*.jpg
+*.jpeg
+**/.DS_Store
+**/node_modules
+**/.wrangler

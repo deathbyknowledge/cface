@@ -1,4 +1,3 @@
-from PIL import Image
 import os
 import requests
 from requests.adapters import HTTPAdapter
@@ -8,7 +7,6 @@ from torch import nn
 from torch.nn import functional as F
 
 from utils.download import download_url_to_file
-from models import InceptionResnetV1Shard1, InceptionResnetV1Shard2
 
 
 class BasicConv2d(nn.Module):
@@ -182,23 +180,9 @@ class Mixed_7a(nn.Module):
         out = torch.cat((x0, x1, x2, x3), 1)
         return out
 
-
-class InceptionResnetV1(nn.Module):
-    def __init__(self, pretrained=None, classify=False, num_classes=None, dropout_prob=0.6, device=None):
+class InceptionResnetV1Shard1(nn.Module):
+    def __init__(self, dropout_prob=0.6, device=None):
         super().__init__()
-
-        # Set simple attributes
-        self.pretrained = pretrained
-        self.classify = classify
-        self.num_classes = num_classes
-
-        if pretrained == 'vggface2':
-            tmp_classes = 8631
-        elif pretrained == 'casia-webface':
-            tmp_classes = 10575
-        elif pretrained is None and self.classify and self.num_classes is None:
-            raise Exception('If "pretrained" is not specified and "classify" is True, "num_classes" must be specified')
-
 
         # Define layers
         self.conv2d_1a = BasicConv2d(3, 32, kernel_size=3, stride=2)
@@ -228,6 +212,34 @@ class InceptionResnetV1(nn.Module):
             Block17(scale=0.10),
             Block17(scale=0.10),
         )
+
+        load_weights(self)
+
+        self.device = torch.device('cpu')
+        if device is not None:
+            self.device = device
+            self.to(device)
+
+    def forward(self, x):
+        x = self.conv2d_1a(x)
+        x = self.conv2d_2a(x)
+        x = self.conv2d_2b(x)
+        x = self.maxpool_3a(x)
+        x = self.conv2d_3b(x)
+        x = self.conv2d_4a(x)
+        x = self.conv2d_4b(x)
+        x = self.repeat_1(x)
+        x = self.mixed_6a(x)
+        x = self.repeat_2(x)
+        print(x.shape)
+        os.exit(0)
+        return x
+
+
+class InceptionResnetV1Shard2(nn.Module):
+    def __init__(self, dropout_prob=0.6, device=None):
+        super().__init__()
+
         self.mixed_7a = Mixed_7a()
         self.repeat_3 = nn.Sequential(
             Block8(scale=0.20),
@@ -242,37 +254,16 @@ class InceptionResnetV1(nn.Module):
         self.last_linear = nn.Linear(1792, 512, bias=False)
         self.last_bn = nn.BatchNorm1d(512, eps=0.001, momentum=0.1, affine=True)
 
-        if pretrained is not None:
-            self.logits = nn.Linear(512, tmp_classes)
-            load_weights(self, pretrained)
-
-        if self.classify and self.num_classes is not None:
-            self.logits = nn.Linear(512, self.num_classes)
+        load_weights(self)
 
         self.device = torch.device('cpu')
         if device is not None:
             self.device = device
             self.to(device)
 
+
+
     def forward(self, x):
-        """Calculate embeddings or logits given a batch of input image tensors.
-
-        Arguments:
-            x {torch.tensor} -- Batch of image tensors representing faces.
-
-        Returns:
-            torch.tensor -- Batch of embedding vectors or multinomial logits.
-        """
-        x = self.conv2d_1a(x)
-        x = self.conv2d_2a(x)
-        x = self.conv2d_2b(x)
-        x = self.maxpool_3a(x)
-        x = self.conv2d_3b(x)
-        x = self.conv2d_4a(x)
-        x = self.conv2d_4b(x)
-        x = self.repeat_1(x)
-        x = self.mixed_6a(x)
-        x = self.repeat_2(x)
         x = self.mixed_7a(x)
         x = self.repeat_3(x)
         x = self.block8(x)
@@ -280,15 +271,12 @@ class InceptionResnetV1(nn.Module):
         x = self.dropout(x)
         x = self.last_linear(x.view(x.shape[0], -1))
         x = self.last_bn(x)
-        # if self.classify:
-        #     x = self.logits(x)
-        # else:
-        #     x = F.normalize(x, p=2, dim=1)
+        # L2 normalization not supported by burn-import, so we have to write it by hand.
+        # x = F.normalize(x, p=2, dim=1)
         return x
 
 
-
-def load_weights(mdl, name):
+def load_weights(mdl):
     path = 'https://github.com/timesler/facenet-pytorch/releases/download/v2.2.9/20180402-114759-vggface2.pt'
 
     model_dir = os.path.join(get_torch_home(), 'checkpoints')
@@ -299,7 +287,7 @@ def load_weights(mdl, name):
         download_url_to_file(path, cached_file)
 
     state_dict = torch.load(cached_file)
-    mdl.load_state_dict(state_dict)
+    mdl.load_state_dict(state_dict, strict=False)
 
 
 def get_torch_home():
@@ -310,26 +298,3 @@ def get_torch_home():
         )
     )
     return torch_home
-
-
-
-if __name__ == "__main__":
-    device = torch.device("cpu")
-    torch.set_grad_enabled(False)
-    dummy_input = torch.randn(1, 3, 160, 160, device=device)
-
-    resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
-    shard1 = InceptionResnetV1Shard1().eval().to(device)
-    shard2 = InceptionResnetV1Shard2().eval().to(device)
-    shard2_input = shard1(dummy_input)
-    assert(torch.equal(resnet(dummy_input), shard2(shard1(dummy_input))))
-    torch.onnx.export(shard1, dummy_input, "shard1.onnx", verbose=True, opset_version=16)
-    torch.onnx.export(shard2, shard2_input, "shard2.onnx", verbose=True, opset_version=16)
-    # Test output
-    # mtcnn = MTCNN(image_size=160, margin=14, device=device, selection_method='center_weighted_size')
-    # img = Image.open('./test.jpg')
-    # img_crpd = mtcnn(img, save_path="./cropped.jpg")
-    # print(img_crpd)
-    # embdgs = resnet(img_crpd.unsqueeze(0))
-    # print(embdgs)
-    # print(embdgs.shape)
