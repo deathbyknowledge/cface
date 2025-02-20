@@ -1,0 +1,13 @@
+[package]
+name = "onnx-to-burn"
+edition = "2021"
+publish = false
+
+[dependencies]
+burn = { version = "0.16", features = ["ndarray"] }
+image = "0.25"
+serde = "1.0.217"
+
+[build-dependencies]
+burn-import = { version = "0.16", features = ["onnx"] }
+
