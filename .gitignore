@@ -8,3 +8,4 @@ dist/build/
 **/.DS_Store
 **/node_modules
 **/.wrangler
+__pycache__
