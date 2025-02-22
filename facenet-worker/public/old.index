@@ -29,7 +29,9 @@
     <button id="captureBtn">Capture</button>
 
     <p><strong>Cropped Image Preview (160×160):</strong></p>
-    <img id="croppedImage" width="160" height="160" alt="Cropped Face" />
+    <img id="croppedImage" width="160" height="160" alt="Cropped Face will show here" />
+
+    <div id="pick" width="250px"> </div>
 
     <script>
       // 1. Load face detection models
@@ -106,67 +108,97 @@
         // 5. Display the 160×160 cropped face in the <img> element
         const dataUrl = faceCanvas.toDataURL("image/jpeg");
         document.getElementById("croppedImage").src = dataUrl;
-
-        // 6. Send the image bytes (two options):
-        sendCroppedFace(dataUrl);
-      }
-
-      // Option A: Send as Base64-encoded string
-      //   (Simple to implement, but bulkier payload)
-      async function sendCroppedFaceAsDataURL(dataUrl) {
-        try {
-          const response = await fetch("/upload-base64", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ imageData: dataUrl }),
-          });
-          const result = await response.text();
-          console.log("Server response:", result);
-        } catch (err) {
-          console.error("Error uploading base64 data:", err);
-        }
-      }
-
-      // Option B: Convert data URL to a Blob and send as form data
-      async function sendCroppedFaceAsBlob(dataUrl) {
-        // Convert a base64 string to a binary Blob
-        function dataURLtoBlob(url) {
-          const arr = url.split(",");
-          const mime = arr[0].match(/:(.*?);/)[1];
-          const bstr = atob(arr[1]);
-          let n = bstr.length;
-          const u8arr = new Uint8Array(n);
-          while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-          }
-          return new Blob([u8arr], { type: mime });
-        }
+        document.getElementById("pick").innerHTML = `
+          <div style="display: flex; ">
+            <button id="uploadBtn">Upload</button>
+            <button id="matchBtn">Match</button>
+          </div>
+          <input id="name-input" />
+        `;
 
         const blob = dataURLtoBlob(dataUrl);
 
-        // Use FormData to send as a file
-        const formData = new FormData();
-        formData.append("file", blob, "cropped.jpg");
-
-        try {
-          const response = await fetch("/compute", {
-            method: "POST",
-            body: blob,
+        document
+          .getElementById("uploadBtn")
+          .addEventListener("click", async () => { 
+            await uploadFace(blob)
+            document.getElementById("pick").innerHTML = `Successfully uploaded! ✅`;
           });
-          const result = await response.json();
-          console.log("Server response:", result);
+
+        document
+          .getElementById("matchBtn")
+          .addEventListener("click", async () => { 
+            const { name }  = await matchFace(blob)
+            if (name) {
+              document.getElementById("pick").innerHTML = `Matched! Greetings ${name}`;
+            }
+            document.getElementById("pick").innerHTML = `No match found :(`;
+          });
+
+
+        // 6. Send the image bytes (two options):
+        //uploadCroppedFaceAsBlob(blob);
+      }
+
+      async function uploadFace(blob) {
+        const name = document.getElementById('name-input').value.trim();
+        if (!name) {
+            alert('Enter a name pretty please.');
+            return;
+        }
+        try {
+          const embeddings = await computeFaceEmbeddings(blob);
+          response = await fetch("http://localhost:65186/add", {
+            method: "POST",
+            body: JSON.stringify({
+              name,
+              picture: blob,
+              embeddings: embeddings
+            }),
+          });
         } catch (err) {
           console.error("Error uploading blob:", err);
         }
       }
 
-      // Decide which sending approach to use
-      function sendCroppedFace(dataUrl) {
-        // Example: send as Blob by default
-        sendCroppedFaceAsBlob(dataUrl);
+      // Convert a base64 string to a binary Blob
+      function dataURLtoBlob(url) {
+        const arr = url.split(",");
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new Blob([u8arr], { type: mime });
+      }
 
-        // Or you can do:
-        // sendCroppedFaceAsDataURL(dataUrl);
+      async function computeFaceEmbeddings(blob) {
+        try {
+          let response = await fetch("/compute", {
+            method: "POST",
+            body: blob,
+          });
+          return await response.json();
+        } catch (err) {
+          console.error("Error computing embeddings:", err);
+        }
+      }
+
+      async function matchFace(blob) {
+        try {
+          const embeddings = await computeFaceEmbeddings(blob);
+          response = await fetch("http://localhost:65186/match", {
+            method: "POST",
+            body: JSON.stringify({
+              embeddings: embeddings
+            }),
+          });
+          return await response.json();
+        } catch (err) {
+          console.error("Error uploading blob:", err);
+        }
       }
 
       // Main: Load models, start video, attach button listener

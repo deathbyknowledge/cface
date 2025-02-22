@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFace</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
+    <style>
+        body {
+            background-color: white;
+            color: black;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .landing, .upload-section, .match-section { display: none; }
+        .media-container { display: flex; justify-content: center; gap: 20px; }
+        video, #photo-upload, #photo-match { width: 640px; height: 480px; object-fit: contain; border: 1px solid #ccc; }
+        #cropped-photo-upload, #cropped-photo-match { width: 160px; height: 160px; background-color: #ccc; border: 1px solid #ccc; }
+        #photos-upload, #photos-match { display: none; flex-direction: row; gap: 20px; }
+        canvas { display: none; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+        button { padding: 10px 20px; border: 1px solid black; background: white; cursor: pointer; }
+        input[type="text"] { padding: 10px; border: 1px solid black; font-family: inherit; }
+        .back-button { margin-top: 20px; }
+        #label-match, #label-upload { width: 160px; margin-top: 10px; }
+        #upload, #match { display: none; } /* Initially hide Upload and Match buttons */
+
+        .spinner {
+            border: 4px solid #ccc;
+            border-top: 4px solid #333;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CFace: Face Recognition on the Cloudflare Stack</h1>
+
+        <!-- Landing Page -->
+        <div id="landing" class="landing">
+          <p>Welcome to <b>CFace</b>. A searchable facial database built with <a href="https://developers.cloudflare.com/workers/">Workers</a>, <a href="https://developers.cloudflare.com/durable-objects/">Durable Objects</a>, <a href="https://developers.cloudflare.com/r2/">R2</a> and <a href="https://developers.cloudflare.com/vectorize/"/>Vectorize.</a></p>
+          <p>You can find the code <a href="https://github.com/deathbyknowledge/facerec-on-workers"/><b>here</b></a>
+          <br/>
+          <p><b>NOTE</b>:All storage used on this demo is deleted daily.</p>
+            <button id="choose-upload">Upload a New Face</button>
+            <button id="choose-match">Match a Face</button>
+        </div>
+
+        <!-- Upload Section -->
+        <div id="upload-section" class="upload-section">
+            <div class="media-container">
+                <video id="video-upload" autoplay></video>
+                <div id="photos-upload">
+                    <img id="photo-upload" />
+                    <div>
+                        <img id="cropped-photo-upload" />
+                        <div id="label-upload">Detected Face</div>
+                    </div>
+                </div>
+                <canvas id="canvas-upload" width="640" height="480"></canvas>
+            </div>
+            <div class="controls">
+                <input type="text" id="name" placeholder="Enter your name">
+                <button id="upload">Upload</button>
+            </div>
+            <button id="take-picture-upload">Take Picture</button>
+            <button class="back-button" id="back-from-upload">Back</button>
+        </div>
+
+        <!-- Match Section -->
+        <div id="match-section" class="match-section">
+            <div class="media-container">
+                <video id="video-match" autoplay></video>
+                <div id="photos-match">
+                    <img id="photo-match" />
+                    <div>
+                        <img id="cropped-photo-match" />
+                        <div id="label-match">Detected Face</div>
+                    </div>
+                </div>
+                <canvas id="canvas-match" width="640" height="480"></canvas>
+            </div>
+            <div class="controls">
+                <button id="match">Match</button>
+            </div>
+            <button id="take-picture-match">Take Picture</button>
+            <button class="back-button" id="back-from-match">Back</button>
+        </div>
+    </div>
+
+    <script>
+        const landing = document.getElementById('landing');
+        const uploadSection = document.getElementById('upload-section');
+        const matchSection = document.getElementById('match-section');
+        const videoUpload = document.getElementById('video-upload');
+        const videoMatch = document.getElementById('video-match');
+        const uploadButton = document.getElementById('upload');
+        const matchButton = document.getElementById('match');
+        const labelUpload = document.getElementById('label-upload');
+        const labelMatch = document.getElementById('label-match');
+        let photoTakenUpload = false;
+        let photoTakenMatch = false;
+
+        // Show landing page initially
+        landing.style.display = 'block';
+
+        // Start webcam
+        function startWebcam(videoElement) {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => videoElement.srcObject = stream)
+                .catch(err => alert('Could not access webcam: ' + err));
+        }
+
+        async function loadModels() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+            console.log("Loaded face-api.js models");
+        }
+
+        // Navigation to Upload
+        document.getElementById('choose-upload').addEventListener('click', () => {
+            landing.style.display = 'none';
+            uploadSection.style.display = 'block';
+            startWebcam(videoUpload);
+        });
+
+        // Navigation to Match
+        document.getElementById('choose-match').addEventListener('click', () => {
+            landing.style.display = 'none';
+            matchSection.style.display = 'block';
+            startWebcam(videoMatch);
+        });
+
+        // Back navigation
+        document.getElementById('back-from-upload').addEventListener('click', () => {
+            uploadSection.style.display = 'none';
+            landing.style.display = 'block';
+            videoUpload.srcObject.getTracks().forEach(track => track.stop());
+        });
+        document.getElementById('back-from-match').addEventListener('click', () => {
+            matchSection.style.display = 'none';
+            landing.style.display = 'block';
+            videoMatch.srcObject.getTracks().forEach(track => track.stop());
+        });
+
+        // Take Picture (Upload)
+        document.getElementById('take-picture-upload').addEventListener('click', async () => {
+            const canvas = document.getElementById('canvas-upload');
+            const photo = document.getElementById('photo-upload');
+            const cropped = document.getElementById('cropped-photo-upload');
+            const photos = document.getElementById('photos-upload');
+            if (!photoTakenUpload) {
+                canvas.getContext('2d').drawImage(videoUpload, 0, 0, 640, 480);
+                photo.src = canvas.toDataURL('image/jpeg');
+                const dataUrl = await getFaceInCanvas(canvas);
+                if (dataUrl) {
+                    cropped.src = dataUrl;
+                    videoUpload.style.display = 'none';
+                    photos.style.display = 'flex';
+                    document.getElementById('take-picture-upload').textContent = 'Retake Picture';
+                    uploadButton.style.display = 'block'; // Show Upload button
+                    photoTakenUpload = true;
+                }
+            } else {
+                videoUpload.style.display = 'block';
+                photos.style.display = 'none';
+                document.getElementById('take-picture-upload').textContent = 'Take Picture';
+                uploadButton.style.display = 'none'; // Hide Upload button
+                photoTakenUpload = false;
+            }
+        });
+
+        async function getFaceInCanvas(canvas) {
+            const detection = await faceapi.detectSingleFace(
+                canvas,
+                new faceapi.TinyFaceDetectorOptions()
+            );
+            if (!detection) {
+                alert("No face detected. Please try again.");
+                return null;
+            }
+
+            const { x, y, width, height } = detection.box;
+
+            const faceCanvas = document.createElement("canvas");
+            const targetSize = 160; // Width & height of the final cropped image
+            faceCanvas.width = targetSize;
+            faceCanvas.height = targetSize;
+
+            // Draw the face region from the fullCanvas onto the faceCanvas (scaled to 160x160)
+            faceCanvas.getContext("2d").drawImage(
+                canvas,
+                x,
+                y,
+                width,
+                height,
+                0,
+                0,
+                targetSize,
+                targetSize
+            );
+
+            // Return the image as base64
+            return faceCanvas.toDataURL("image/jpeg");
+        }
+
+        // Take Picture (Match)
+        document.getElementById('take-picture-match').addEventListener('click', async () => {
+            const canvas = document.getElementById('canvas-match');
+            const photo = document.getElementById('photo-match');
+            const cropped = document.getElementById('cropped-photo-match');
+            const photos = document.getElementById('photos-match');
+            if (!photoTakenMatch) {
+                canvas.getContext('2d').drawImage(videoMatch, 0, 0, 640, 480);
+                photo.src = canvas.toDataURL('image/jpeg');
+                const dataUrl = await getFaceInCanvas(canvas);
+                if (dataUrl) {
+                    cropped.src = dataUrl;
+                    videoMatch.style.display = 'none';
+                    photos.style.display = 'flex';
+                    document.getElementById('take-picture-match').textContent = 'Retake Picture';
+                    matchButton.style.display = 'block'; // Show Match button
+                    photoTakenMatch = true;
+                }
+            } else {
+                videoMatch.style.display = 'block';
+                photos.style.display = 'none';
+                document.getElementById('take-picture-match').textContent = 'Take Picture';
+                matchButton.style.display = 'none'; // Hide Match button
+                photoTakenMatch = false;
+            }
+        });
+
+        // Compute embeddings and call /compute
+        async function computeFaceEmbeddings(blob) {
+            try {
+                let response = await fetch("/compute", {
+                    method: "POST",
+                    body: blob,
+                });
+                return await response.json();
+            } catch (err) {
+                console.error("Error computing embeddings:", err);
+            }
+        }
+
+        const cloneBlob = b => new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.readAsArrayBuffer(b);
+
+          r.addEventListener('load', _ => {
+            resolve(new Blob([r.result], {type: b.type}));
+          });
+
+          r.addEventListener('error', _ => {
+            reject();
+          });
+        });
+
+        // Upload face with embeddings
+        async function uploadFace(blob, name) {
+            try {
+                const embeddings = await computeFaceEmbeddings(blob);
+                response = await fetch("https://cface-vectorize-worker.defo.works/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name,
+                        picture: Array.from(new Uint8Array(await blob.arrayBuffer())),
+                        embeddings
+                    }),
+                });
+            } catch (err) {
+                console.error("Error uploading blob:", err);
+            }
+        }
+
+        // Match face with embeddings
+        async function matchFace(blob) {
+            try {
+                const embeddings = await computeFaceEmbeddings(blob);
+                response = await fetch("https://cface-vectorize-worker.defo.works/match", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        embeddings: embeddings
+                    }),
+                });
+                return await response.json();
+            } catch (err) {
+                console.error("Error uploading blob:", err);
+            }
+        }
+
+        // Upload Action with loading state
+        document.getElementById('upload').addEventListener('click', async () => {
+            const name = document.getElementById('name').value.trim();
+            if (!name) return alert('Please enter a name.');
+            const cropped = document.getElementById('cropped-photo-upload');
+            const blob = await (await fetch(cropped.src)).blob();
+
+            // Show loading state
+            cropped.style.display = 'none';
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            labelUpload.insertAdjacentElement('beforebegin', spinner);
+            labelUpload.textContent = 'Processing...';
+            uploadButton.disabled = true;
+
+            await uploadFace(blob, name);
+
+            // Hide loading state and show success
+            spinner.remove();
+            cropped.style.display = 'block';
+            labelUpload.textContent = 'Successfully registered face. ✅';
+            //labelUpload.textContent = 'Detected Face';
+            uploadButton.disabled = false;
+        });
+
+        // Match Action with loading state
+        document.getElementById('match').addEventListener('click', async () => {
+            const cropped = document.getElementById('cropped-photo-match');
+            const blob = await (await fetch(cropped.src)).blob();
+
+            // Show loading state
+            cropped.style.display = 'none';
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            labelMatch.insertAdjacentElement('beforebegin', spinner);
+            labelMatch.textContent = 'Processing...';
+            matchButton.disabled = true;
+
+            const res = await matchFace(blob);
+
+            if (!res) { // probably failed to find
+            // Hide loading state and show matched face
+            spinner.remove();
+            cropped.style.display = 'none';
+            labelMatch.textContent = `No match found. :(`;
+            matchButton.disabled = false;
+
+            }
+            const { name, picture } = res;
+            // Hide loading state and show matched face
+            spinner.remove();
+            cropped.src = URL.createObjectURL(new Blob([new Uint8Array(picture)], {type: "image/jpeg"}));
+            cropped.style.display = 'block';
+            labelMatch.textContent = `Match! Welcome back, ${name}.`;
+            matchButton.disabled = false;
+        });
+
+        window.addEventListener("load", async () => {
+            await loadModels();
+        });
+    </script>
+</body>
+</html>
