@@ -17,7 +17,7 @@
     {"binding": "FACES", "bucket_name": "faces", "preview_bucket_name": "faces"}
   ],
 	"triggers": {
-		"crons": ["0 0 12 * *"]
+		"crons": ["0 12 * * *"]
 	}
   /**
    * Smart Placement

@@ -248,7 +248,7 @@
         // Compute embeddings and call /compute
         async function computeFaceEmbeddings(blob) {
             try {
-                let response = await fetch("/compute", {
+                let response = await fetch("https://facenet-cface.defo.works/compute", {
                     method: "POST",
                     body: blob,
                 });
@@ -275,7 +275,7 @@
         async function uploadFace(blob, name) {
             try {
                 const embeddings = await computeFaceEmbeddings(blob);
-                response = await fetch("https://cface-vectorize-worker.defo.works/add", {
+                response = await fetch("https://vectorize-cface.defo.works/add", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -293,7 +293,7 @@
         async function matchFace(blob) {
             try {
                 const embeddings = await computeFaceEmbeddings(blob);
-                response = await fetch("https://cface-vectorize-worker.defo.works/match", {
+                response = await fetch("https://vectorize-cface.defo.works/match", {
                     method: "POST",
                     body: JSON.stringify({
                         embeddings: embeddings

@@ -11,7 +11,7 @@ pub mod shard1 {
     #[durable_object]
     pub struct FaceNetShard1 {
         model: Option<Shard1<NDBackend>>,
-        _state: State,
+        state: State,
         env: Env,
     }
 
@@ -20,7 +20,7 @@ pub mod shard1 {
         fn new(state: State, env: Env) -> Self {
             Self {
                 model: None,
-                _state: state,
+                state,
                 env,
             }
         }
@@ -40,8 +40,6 @@ pub mod shard1 {
                 .to_rgb8();
 
             let (_batch, channels, height, width) = (1, 3, 160, 160);
-
-            //let resized_img = image::imageops::resize(&img, width, height, FilterType::CatmullRom);
 
             // Convert to Vec<f32>, normalized to [0.0, 1.0]
             // The output layout will be [R0, G0, B0, R1, G1, B1, ..., Rn, Gn, Bn]
@@ -73,10 +71,6 @@ pub mod shard1 {
             // Bytes of the tensor where this shard ends.
             let result = self.compute(&nchw_data);
             
-
-
-
-            // self.env.bucket("FACES")?.put(key, value)
             let continent = req
                 .cf()
                 .expect("Failed to read CF request info")
@@ -86,7 +80,6 @@ pub mod shard1 {
 
             // Currently, to add a body to a Request, we need to convert
             // to a JsValue first.
-            
             let uint8array = js_sys::Uint8Array::from(result.as_slice());
             let js_value: JsValue = uint8array.into();
 
@@ -122,12 +115,13 @@ pub mod shard1 {
 
         /// Fetch model weights from R2 and load the model into the DO
         async fn load_model(&mut self) -> Result<()> {
-            console_log!("Fetching model");
             use burn::{
                 module::Module,
                 record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
             };
 
+            let id = self.state.id().to_string(); 
+            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
             // 1. Fetch bytes
             let bytes = {
                 let bucket = self.env.bucket("MODELS")?;
@@ -137,7 +131,7 @@ pub mod shard1 {
                     .await?
                     .expect("Model not found");
                 obj.body().expect("No body").bytes().await?
-            }; // 2. Immediately parse the record in a smaller scope
+            };
 
 
             let model: Shard1<burn::backend::ndarray::NdArray<f32>> = Shard1::new(&Default::default());
@@ -149,7 +143,7 @@ pub mod shard1 {
             };
 
             self.model = Some(model.load_record(record));
-            console_log!("Loaded model");
+            console_log!("[Shard1] Successfully loaded model weights from R2.\nInstance id: {id}");
             Ok(())
         }
     }
@@ -166,7 +160,7 @@ pub mod shard2 {
     #[durable_object]
     pub struct FaceNetShard2 {
         model: Option<Shard2<NDBackend>>,
-        _state: State,
+        state: State,
         env: Env,
     }
 
@@ -176,7 +170,7 @@ pub mod shard2 {
         fn new(state: State, env: Env) -> Self {
             Self {
                 model: None,
-                _state: state,
+                state,
                 env,
             }
         }
@@ -186,18 +180,17 @@ pub mod shard2 {
                 self.load_model().await?;
             }
 
-            // Expects it to be a 160x160 JPEG
+            // Expects it to be the output of Shard1's last layer
             let bytes: Vec<u8> = req.bytes().await?;
+
             // [f32; 512] face embeddings
             let result = self.compute(bytes);
-            // self.env.bucket("FACES")?.put(key, value)
 
             Response::from_json(&result)
         }
     }
 
     impl FaceNetShard2 {
-        /// Classify the input image [f32; 28*28] and return the array of probabilities.
         fn compute(&mut self, input: Vec<u8>) -> Vec<f32> {
             let device = Default::default();
             let data = TensorData::from_bytes(input, [1, 896, 8, 8], DType::F32);
@@ -215,13 +208,14 @@ pub mod shard2 {
 
         /// Fetch model weights from R2 and load the model into the DO
         async fn load_model(&mut self) -> Result<()> {
-            console_log!("Fetching model");
             use burn::{
                 module::Module,
                 record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
             };
 
-            // 1. Fetch bytes
+            let id = self.state.id().to_string(); 
+            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
+
             let bytes = {
                 let bucket = self.env.bucket("MODELS")?;
                 let obj = bucket
@@ -230,7 +224,7 @@ pub mod shard2 {
                     .await?
                     .expect("Model not found");
                 obj.body().expect("No body").bytes().await?
-            }; // 2. Immediately parse the record in a smaller scope
+            };
 
 
             let model: Shard2<burn::backend::ndarray::NdArray<f32>> = Shard2::new(&Default::default());
@@ -242,7 +236,7 @@ pub mod shard2 {
             };
 
             self.model = Some(model.load_record(record));
-            console_log!("Loaded model");
+            console_log!("[Shard2] Successfully loaded model weights from R2.\nInstance id: {id}");
             Ok(())
         }
     }

@@ -16,14 +16,10 @@ binding = "FACES"
 bucket_name = "faces"
 preview_bucket_name = "faces"
 
-[assets]
-directory = "./public"
-binding = "ASSETS"
-
 [durable_objects]
 bindings = [
-  { name = "SHARD1", class_name = "FaceNetShard1" }, # the `class_name` uses the Rust struct identifier name
-  { name = "SHARD2", class_name = "FaceNetShard2" } # the `class_name` uses the Rust struct identifier name
+  { name = "SHARD1", class_name = "FaceNetShard1" },
+  { name = "SHARD2", class_name = "FaceNetShard2" }
 ]
 
 [observability.logs]
