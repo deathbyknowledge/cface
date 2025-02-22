@@ -32,7 +32,6 @@ The model files can now be used in the Worker/Durable Object code which is in `f
 ### The facial deteciton model
 Not much to say here, the client uses [face-api.js](https://justadudewhohacks.github.io/face-api.js/docs/index.html) to detect faces and make them 160x160 (the input size to the recognition model) to send them to the Worker running the recognition.
 
-We host the model weights (small) in the `facenet-worker/public/models`.
 
 ### Vector database
 Cloudflare's Vectorize is a perfect fit. We just need to upsert and query the index, which is in `vectorize-worker/src/index.js`.
@@ -40,6 +39,7 @@ Cloudflare's Vectorize is a perfect fit. We just need to upsert and query the in
 This same worker also has a cron trigger that nukes the vector index and the R2 bucket (with face images) every day at 12:00.
 
 ### HTML Client
-Putting it all together, just an HTML file in `facenet-worker/public/index.html` where you can take a picture of yourself and upload it or match against the database. It is hosted as a simple static site.
+Putting it all together, just an HTML file in `site/index.html` where you can take a picture of yourself and upload it or match against the database. It is hosted as a simple static site.
 
+We host the face detection model weights (small) in `site/models`.
 
