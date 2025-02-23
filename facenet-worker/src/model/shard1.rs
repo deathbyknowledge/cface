@@ -1,4 +1,5 @@
 // Generated from ONNX "pytorch/shard1.onnx" by burn-import
+// w/ some extra tweaks
 use burn::nn::conv::Conv2d;
 use burn::nn::conv::Conv2dConfig;
 use burn::nn::pool::MaxPool2d;

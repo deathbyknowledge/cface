@@ -2,7 +2,7 @@ pub type Backend = burn::backend::ndarray::NdArray<f32>;
 
 pub mod shard1 {
     use super::Backend;
-    use crate::shard1::Model as Shard1;
+    use crate::model::shard1::Model as Shard1;
     use burn::tensor::Tensor;
     use image::imageops::FilterType;
     use image::ImageReader;
@@ -160,7 +160,7 @@ pub mod shard1 {
 
 pub mod shard2 {
     use super::Backend;
-    use crate::shard2::Model as Shard2;
+    use crate::model::shard2::Model as Shard2;
     use burn::tensor::{DType, Tensor, TensorData};
     use worker::*;
 

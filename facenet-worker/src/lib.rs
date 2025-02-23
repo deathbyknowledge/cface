@@ -1,6 +1,5 @@
 pub mod durable_object;
-pub mod shard1;
-pub mod shard2;
+pub mod model;
 
 use worker::*;
 
