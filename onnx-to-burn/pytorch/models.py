@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from utils.download import download_url_to_file
+from download import download_url_to_file
 
 
 class BasicConv2d(nn.Module):
@@ -231,8 +231,6 @@ class InceptionResnetV1Shard1(nn.Module):
         x = self.repeat_1(x)
         x = self.mixed_6a(x)
         x = self.repeat_2(x)
-        print(x.shape)
-        os.exit(0)
         return x
 
 

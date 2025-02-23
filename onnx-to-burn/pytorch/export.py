@@ -1,13 +1,5 @@
-from PIL import Image
-import os
-import requests
-from requests.adapters import HTTPAdapter
-
 import torch
-from torch import nn
-from torch.nn import functional as F
-
-from utils.download import download_url_to_file
+from download import download_url_to_file
 from models import InceptionResnetV1Shard1, InceptionResnetV1Shard2
 
 

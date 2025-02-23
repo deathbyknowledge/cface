@@ -23,11 +23,11 @@ The pre-trained weights (from [facenet-pytorch](https://github.com/timesler/face
 
 Cloudflare Workers have great WASM support and you can write them all in Rust without worrying about WASM bindings too muchby using `workers-rs`, so here we port the model from `torch` (python) to `burn` (Rust).
 
-`onnx-to-burn/pytorch/facenet.py` has the split model definition. It loads the model weights and then exports the shards in `.onnx` format.
+`onnx-to-burn/pytorch/model.py` has the split model definition. `extract.py` loads the model weights and then exports the shards in `.onnx` format.
 
-Then `onnx-to-burn/build.rs` reads the `.onnx` file generated and outputs the 2 model files using `shard1.rs` and `shard2.rs`. It also outputs the model weights in f16 precicision in `burn`'s binary format, `shard1.bin` and `shard2.bin`. (These last 2 files we upload to R2, so we can fetch them on the edge).
+Then `onnx-to-burn/main.rs` reads the `.onnx` files generated and outputs the 2 model files using `shard1.rs` and `shard2.rs`. It also outputs the model weights in f16 precision in `burn`'s binary format, `shard1.bin` and `shard2.bin`. (These last 2 files we upload to R2, so we can fetch them on the edge).
 
-The model files can now be used in the Worker/Durable Object code which is in `facenet-worker/`.
+The model files can now be used in the Worker/Durable Object code which will run inference, located in `facenet-worker/`.
 
 ### The facial deteciton model
 Not much to say here, the client uses [face-api.js](https://justadudewhohacks.github.io/face-api.js/docs/index.html) to detect faces and make them 160x160 (the input size to the recognition model) to send them to the Worker running the recognition.

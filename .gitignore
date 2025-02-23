@@ -9,3 +9,4 @@ onnx-to-burn/**/*.bin
 **/node_modules
 **/.wrangler
 __pycache__
+**/out
