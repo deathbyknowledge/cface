@@ -1,16 +1,18 @@
+pub type Backend = burn::backend::ndarray::NdArray<f32>;
+
 pub mod shard1 {
+    use super::Backend;
     use crate::shard1::Model as Shard1;
     use burn::tensor::Tensor;
     use image::imageops::FilterType;
     use image::ImageReader;
     use worker::*;
-    pub type NDBackend = burn::backend::ndarray::NdArray<f32>;
     use wasm_bindgen::prelude::*;
     use js_sys;
 
     #[durable_object]
     pub struct FaceNetShard1 {
-        model: Option<Shard1<NDBackend>>,
+        model: Option<Shard1<Backend>>,
         state: State,
         env: Env,
     }
@@ -32,6 +34,87 @@ pub mod shard1 {
 
             // Expects it to be a 160x160 JPEG
             let bytes: Vec<u8> = req.bytes().await?;
+
+            // Bytes of the tensor where this shard ends.
+            let input = self.image_bytes_to_vec(bytes)?;
+            let result = self.compute(&input);
+            
+            let continent = req
+                .cf()
+                .expect("Failed to read CF request info")
+                .continent()
+                .expect("Failed to read CF Continent");
+
+
+            // Currently, to add a body to a Request, we need to convert
+            // to a JsValue first.
+            let uint8array = js_sys::Uint8Array::from(result.as_slice());
+            let js_value: JsValue = uint8array.into();
+
+            let shard_req = Request::new_with_init(&req.url()?.to_string(), RequestInit::new()
+                    .with_body(Some(js_value))
+                    .with_method(Method::Post)
+            )?;
+
+            let shard2 = self.env
+                .durable_object("SHARD2")?
+                .id_from_name(&continent)?
+                .get_stub()?;
+
+            return shard2.fetch_with_request(shard_req).await;
+        }
+    }
+
+    impl FaceNetShard1 {
+        /// Classify the input image [f32; 28*28] and return the array of probabilities.
+        fn compute(&mut self, input: &[f32]) -> Vec<u8> {
+            let device = Default::default();
+            let input = Tensor::<Backend, 1>::from_floats(input, &device).reshape([1, 3, 160, 160]);
+
+            let bytes = {
+                let output = self.model.as_ref().unwrap().forward(input);
+                let tensor_data = output.into_data();
+                tensor_data.as_bytes().to_vec()
+            };
+
+            bytes
+        }
+
+        /// Fetch model weights from R2 and load the model into the DO
+        async fn load_model(&mut self) -> Result<()> {
+            use burn::{
+                module::Module,
+                record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
+            };
+
+            let id = self.state.id().to_string(); 
+            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
+            // 1. Fetch bytes
+            let bytes = {
+                let bucket = self.env.bucket("MODELS")?;
+                let obj = bucket
+                    .get("shard1.bin")
+                    .execute()
+                    .await?
+                    .expect("Model not found");
+                obj.body().expect("No body").bytes().await?
+            };
+
+
+            let model: Shard1<Backend> = Shard1::new(&Default::default());
+            let record = {
+                let record = BinBytesRecorder::<HalfPrecisionSettings>::default()
+                    .load(bytes, &Default::default())
+                    .expect("Failed to decode state");
+                record
+            };
+
+            self.model = Some(model.load_record(record));
+            console_log!("[Shard1] Successfully loaded model weights from R2.\nInstance id: {id}");
+            Ok(())
+        }
+
+        fn image_bytes_to_vec(&self, bytes: Vec<u8>) -> Result<Vec<f32>> {
             let img = ImageReader::new(std::io::Cursor::new(&bytes))
                 .with_guessed_format()?
                 .decode()
@@ -67,99 +150,22 @@ pub mod shard1 {
                         rgb_data[pixel_i * 3 + 2];
                 }
             }
-
-            // Bytes of the tensor where this shard ends.
-            let result = self.compute(&nchw_data);
-            
-            let continent = req
-                .cf()
-                .expect("Failed to read CF request info")
-                .continent()
-                .expect("Failed to read CF Continent");
-
-
-            // Currently, to add a body to a Request, we need to convert
-            // to a JsValue first.
-            let uint8array = js_sys::Uint8Array::from(result.as_slice());
-            let js_value: JsValue = uint8array.into();
-
-            let shard_req = Request::new_with_init(&req.url()?.to_string(), RequestInit::new()
-                    .with_body(Some(js_value))
-                    .with_method(Method::Post)
-            )?;
-
-            let shard2 = self.env
-                .durable_object("SHARD2")?
-                .id_from_name(&continent)?
-                .get_stub()?;
-
-            return shard2.fetch_with_request(shard_req).await;
-        }
-    }
-
-    impl FaceNetShard1 {
-        /// Classify the input image [f32; 28*28] and return the array of probabilities.
-        fn compute(&mut self, input: &[f32]) -> Vec<u8> {
-            let device = Default::default();
-            let input = Tensor::<NDBackend, 1>::from_floats(input, &device).reshape([1, 3, 160, 160]);
-
-            let bytes = {
-                let output = self.model.as_ref().unwrap().forward(input);
-                let tensor_data = output.into_data();
-                console_log!("{:#?} with {:#?}", tensor_data.dtype, tensor_data.shape);
-                tensor_data.as_bytes().to_vec()
-            };
-
-            bytes
-        }
-
-        /// Fetch model weights from R2 and load the model into the DO
-        async fn load_model(&mut self) -> Result<()> {
-            use burn::{
-                module::Module,
-                record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
-            };
-
-            let id = self.state.id().to_string(); 
-            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
-            // 1. Fetch bytes
-            let bytes = {
-                let bucket = self.env.bucket("MODELS")?;
-                let obj = bucket
-                    .get("shard1.bin")
-                    .execute()
-                    .await?
-                    .expect("Model not found");
-                obj.body().expect("No body").bytes().await?
-            };
-
-
-            let model: Shard1<burn::backend::ndarray::NdArray<f32>> = Shard1::new(&Default::default());
-            let record = {
-                let record = BinBytesRecorder::<HalfPrecisionSettings>::default()
-                    .load(bytes, &Default::default())
-                    .expect("Failed to decode state");
-                record
-            };
-
-            self.model = Some(model.load_record(record));
-            console_log!("[Shard1] Successfully loaded model weights from R2.\nInstance id: {id}");
-            Ok(())
+            Ok(nchw_data)
         }
     }
 }
 
 
 pub mod shard2 {
+    use super::Backend;
     use crate::shard2::Model as Shard2;
     use burn::tensor::{Tensor, TensorData, DType};
     use worker::*;
-    pub type NDBackend = burn::backend::ndarray::NdArray<f32>;
 
 
     #[durable_object]
     pub struct FaceNetShard2 {
-        model: Option<Shard2<NDBackend>>,
+        model: Option<Shard2<Backend>>,
         state: State,
         env: Env,
     }
@@ -194,7 +200,7 @@ pub mod shard2 {
         fn compute(&mut self, input: Vec<u8>) -> Vec<f32> {
             let device = Default::default();
             let data = TensorData::from_bytes(input, [1, 896, 8, 8], DType::F32);
-            let input = Tensor::<NDBackend, 4>::from_data(data, &device);
+            let input = Tensor::<Backend, 4>::from_data(data, &device);
 
             let output = self.model.as_ref().unwrap().forward(input);
 
@@ -227,7 +233,7 @@ pub mod shard2 {
             };
 
 
-            let model: Shard2<burn::backend::ndarray::NdArray<f32>> = Shard2::new(&Default::default());
+            let model: Shard2<Backend> = Shard2::new(&Default::default());
             let record = {
                 let record = BinBytesRecorder::<HalfPrecisionSettings>::default()
                     .load(bytes, &Default::default())

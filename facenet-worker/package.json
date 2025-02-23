@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "build": "wrangler deploy --dryRun",
+    "test": "npm run build && node --test tests/test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "miniflare": "^3.20250214.0",
+    "wrangler": "^3.109.2"
+  }
+}

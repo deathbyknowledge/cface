@@ -1,4 +1,3 @@
-pub mod model;
 pub mod shard1;
 pub mod shard2;
 pub mod durable_object;
@@ -34,8 +33,13 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 .durable_object("SHARD1")?
                 .id_from_name(&continent)?
                 .get_stub()?;
-            let resp = model_runner.fetch_with_request(req).await?;
-            return resp.with_cors(&cors);
+            match model_runner.fetch_with_request(req).await {
+                Ok(res) => return res.with_cors(&cors),
+                Err(e) => {
+                    console_error!("[Worker] Received error while computing: {e}");
+                    return Response::error("error ocurred when computing image", 500);
+                }
+            }
            },
         Method::Options => {
             return Response::builder().with_status(204).empty().with_cors(&cors);

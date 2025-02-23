@@ -1,7 +1,7 @@
 dist/build/
 *.swp
 **/target
-*.bin
+onnx-to-burn/**/*.bin
 *.onnx
 *.jpg
 *.jpeg
