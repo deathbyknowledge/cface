@@ -6,9 +6,9 @@ pub mod shard1 {
     use burn::tensor::Tensor;
     use image::imageops::FilterType;
     use image::ImageReader;
-    use worker::*;
-    use wasm_bindgen::prelude::*;
     use js_sys;
+    use wasm_bindgen::prelude::*;
+    use worker::*;
 
     #[durable_object]
     pub struct FaceNetShard1 {
@@ -38,25 +38,27 @@ pub mod shard1 {
             // Bytes of the tensor where this shard ends.
             let input = self.image_bytes_to_vec(bytes)?;
             let result = self.compute(&input);
-            
+
             let continent = req
                 .cf()
                 .expect("Failed to read CF request info")
                 .continent()
                 .expect("Failed to read CF Continent");
 
-
             // Currently, to add a body to a Request, we need to convert
             // to a JsValue first.
             let uint8array = js_sys::Uint8Array::from(result.as_slice());
             let js_value: JsValue = uint8array.into();
 
-            let shard_req = Request::new_with_init(&req.url()?.to_string(), RequestInit::new()
+            let shard_req = Request::new_with_init(
+                &req.url()?.to_string(),
+                RequestInit::new()
                     .with_body(Some(js_value))
-                    .with_method(Method::Post)
+                    .with_method(Method::Post),
             )?;
 
-            let shard2 = self.env
+            let shard2 = self
+                .env
                 .durable_object("SHARD2")?
                 .id_from_name(&continent)?
                 .get_stub()?;
@@ -87,8 +89,10 @@ pub mod shard1 {
                 record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
             };
 
-            let id = self.state.id().to_string(); 
-            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
+            let id = self.state.id().to_string();
+            console_log!(
+                "[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}"
+            );
             // 1. Fetch bytes
             let bytes = {
                 let bucket = self.env.bucket("MODELS")?;
@@ -99,7 +103,6 @@ pub mod shard1 {
                     .expect("Model not found");
                 obj.body().expect("No body").bytes().await?
             };
-
 
             let model: Shard1<Backend> = Shard1::new(&Default::default());
             let record = {
@@ -155,13 +158,11 @@ pub mod shard1 {
     }
 }
 
-
 pub mod shard2 {
     use super::Backend;
     use crate::shard2::Model as Shard2;
-    use burn::tensor::{Tensor, TensorData, DType};
+    use burn::tensor::{DType, Tensor, TensorData};
     use worker::*;
-
 
     #[durable_object]
     pub struct FaceNetShard2 {
@@ -169,7 +170,6 @@ pub mod shard2 {
         state: State,
         env: Env,
     }
-
 
     #[durable_object]
     impl DurableObject for FaceNetShard2 {
@@ -219,8 +219,10 @@ pub mod shard2 {
                 record::{BinBytesRecorder, HalfPrecisionSettings, Recorder},
             };
 
-            let id = self.state.id().to_string(); 
-            console_log!("[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}");
+            let id = self.state.id().to_string();
+            console_log!(
+                "[Shard1] No model found in memory. Loading it from R2.\nInstance id: {id}"
+            );
 
             let bytes = {
                 let bucket = self.env.bucket("MODELS")?;
@@ -231,7 +233,6 @@ pub mod shard2 {
                     .expect("Model not found");
                 obj.body().expect("No body").bytes().await?
             };
-
 
             let model: Shard2<Backend> = Shard2::new(&Default::default());
             let record = {

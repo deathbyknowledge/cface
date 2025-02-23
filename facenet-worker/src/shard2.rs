@@ -10,13 +10,10 @@ use burn::nn::BatchNormConfig;
 use burn::nn::Linear;
 use burn::nn::LinearConfig;
 use burn::nn::PaddingConfig2d;
-use burn::record::HalfPrecisionSettings;
-use burn::record::Recorder;
 use burn::{
     module::Module,
     tensor::{backend::Backend, Tensor},
 };
-
 
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
@@ -64,7 +61,6 @@ pub struct Model<B: Backend> {
     phantom: core::marker::PhantomData<B>,
     device: burn::module::Ignored<B::Device>,
 }
-
 
 impl<B: Backend> Model<B> {
     #[allow(unused_variables)]

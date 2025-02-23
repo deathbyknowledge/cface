@@ -9,7 +9,6 @@ use burn::{
     tensor::{backend::Backend, Tensor},
 };
 
-
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
     conv2d1: Conv2d<B>,
@@ -112,7 +111,6 @@ pub struct Model<B: Backend> {
     phantom: core::marker::PhantomData<B>,
     device: burn::module::Ignored<B::Device>,
 }
-
 
 impl<B: Backend> Model<B> {
     #[allow(unused_variables)]
